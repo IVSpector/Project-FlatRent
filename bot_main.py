@@ -6,7 +6,9 @@ import json
 import atexit
 import Check_lon_lat as coord
 import os
-
+from dotenv import load_dotenv
+load_dotenv()
+import model_work as model
 
 # Enable logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -29,10 +31,11 @@ atexit.register(save_sessions)
 # Available pages
 PAGES = {
     "start": "Welcome! Let's start.",
-    "enter rooms count": "Please enter the number of rooms (e.g., 1, 2, 3).",
-    "enter square meters": "Please enter the square meters (e.g., 50.5).",
-    "enter floor": "Please enter the floor number (e.g., 1, 5, 10).",
-    "request location": "Check apartment price in your location or point any location."
+    "enter rooms count": "Please enter the number of rooms.",
+    "enter square meters": "Please enter the square meters.",
+    "enter floor": "Please enter the floor number.",
+    "enter house": "Please enter the house number.",
+    "request location": "Check apartment price in your current location or point any location."
 }
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -45,6 +48,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "data": {
             "city": None,
             "street": None,
+            "house_number": None,
             "rooms": None,
             "square_meters": None,
             "floor": None,
@@ -65,16 +69,34 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     user_id = update.effective_user.id
     text = update.message.text
 
+    if text == "Main menu":
+        user_sessions[user_id]["current_page"] = "request location"
+        user_sessions[user_id]["current_input"] = None
+        text = "Clarify Details 🔎"
+
+    if text == "Location":
+        user_sessions[user_id]["current_page"] = "request location"
+        user_sessions[user_id]["current_input"] = None
+        text = "Start again 🔄"
+
+
     # Check if user has a session
     if user_id not in user_sessions:
         await update.message.reply_text("Please start with /start command.")
         return
 
+    # Input Details: FLOOR, SQM, ROOMS
     if user_sessions[user_id]["current_input"]:
-        current_input = user_sessions[user_id]["current_input"]
-        if text < 0:
-            await update.message.reply_text("Please enter a non-negative floor number.")
+
+        if (text.isdigit() and int(text) < 0) or not text.isdigit():
+            massage = "Please enter a number and non negative or press Main menu."
+            replay_buttons = [["Main menu"]]
+            reply_markup = ReplyKeyboardMarkup(replay_buttons, one_time_keyboard=True, resize_keyboard=True)
+            await update.message.reply_text(massage, reply_markup=reply_markup)
+
             return
+
+        current_input = user_sessions[user_id]["current_input"]
         user_sessions[user_id]["data"][current_input] = text
         text = "Clarify Details 🔎"
         user_sessions[user_id]["current_page"] = "request location"
@@ -89,42 +111,24 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 user_sessions[user_id]["current_input"] = "floor"
                 await update.message.reply_text(PAGES["enter floor"])
 
-                # floor = int(text)
-                # if floor < 0:
-                #     await update.message.reply_text("Please enter a non-negative floor number.")
-                #     return
-                # session_data["floor"] = floor
-                # user_sessions[user_id]["current_page"] = "request location"
-                # await update.message.reply_text(PAGES["request location"])
-        #
-        # if current_page == "Rooms":
-        #     rooms = int(text)
-        #     if rooms <= 0:
-        #         await update.message.reply_text("Please enter a positive number of rooms.")
-        #         return
-        #     session_data["rooms"] = rooms
-        #     user_sessions[user_id]["current_page"] = "enter square meters"
-        #     await update.message.reply_text(PAGES["enter square meters"])
-        #
-        # elif current_page == "Sq meters":
-        #     square_meters = float(text)
-        #     if square_meters <= 0:
-        #         await update.message.reply_text("Please enter a positive number for square meters.")
-        #         return
-        #     session_data["square_meters"] = square_meters
-        #     user_sessions[user_id]["current_page"] = "enter floor"
-        #     await update.message.reply_text(PAGES["enter floor"])
-        #
-        # elif current_page == "Floor":
-        #     await update.message.reply_text(PAGES["enter floor count"])
-        #
-        #     floor = int(text)
-        #     if floor < 0:
-        #         await update.message.reply_text("Please enter a non-negative floor number.")
-        #         return
-        #     session_data["floor"] = floor
-        #     user_sessions[user_id]["current_page"] = "request location"
-        #     await update.message.reply_text(PAGES["request location"])
+            elif text == "Rooms":
+                user_sessions[user_id]["current_input"] = "rooms"
+                await update.message.reply_text(PAGES["enter rooms count"])
+
+            elif text == "Sq meters":
+                user_sessions[user_id]["current_input"] = "square_meters"
+                await update.message.reply_text(PAGES["enter square meters"])
+
+            else:
+                massage = "Please try again."
+                user_sessions[user_id]["current_page"] = "request location"
+
+
+                replay_buttons = [["Clarify Details 🔎"]]
+
+                reply_markup = ReplyKeyboardMarkup(replay_buttons, one_time_keyboard=True, resize_keyboard=True)
+                await update.message.reply_text(massage, reply_markup=reply_markup, parse_mode='Markdown')
+
 
         elif current_page == "request location":
             if text == "Start again 🔄":
@@ -150,6 +154,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 
             elif text == "Clarify Details 🔎":
+                model_result_min, model_result_max = model.check_price(session_data)
+
                 details = (
                     f"Current details:\n"
                     f"City: {session_data['city']}\n"
@@ -158,21 +164,26 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                     f"Rooms: {session_data['rooms']}\n"
                     f"Square Meters: {session_data['square_meters']}\n"
                     f"Floor: {session_data['floor']}\n"
-                    f"Please specify which detail to clarify or use /start to begin again."
+                    f"💰 Price estimate: *{model_result_min}₪* – *{model_result_max}₪*\n"
+                    # f"Please specify which detail to clarify or use /start to begin again."
                 )
 
-                replay_buttons = [["Floor", "House", "Rooms", "Sq meters"]]
+                replay_buttons = [["Floor", "Rooms", "Sq meters", "Location"]]
                 user_sessions[user_id]["current_page"] = "details"
 
-                reply_markup = ReplyKeyboardMarkup(replay_buttons, one_time_keyboard=False, resize_keyboard=True)
-                await update.message.reply_text(details, reply_markup=reply_markup)
-
-
+                reply_markup = ReplyKeyboardMarkup(replay_buttons, one_time_keyboard=True, resize_keyboard=True)
+                await update.message.reply_text(details, reply_markup=reply_markup, parse_mode='Markdown')
 
 
             elif text == "Show Heatmap 🗺":
-                await update.message.reply_text(
-                    "Heatmap functionality is not implemented yet. Please select another option.")
+                with open("dashboard_telegramm.png", "rb") as photo:
+                    await update.message.reply_photo(photo)
+                replay_buttons = [["Clarify Details 🔎"]]
+                massage = "Please clarify details about apartment to receive estimate price."
+
+                reply_markup = ReplyKeyboardMarkup(replay_buttons, one_time_keyboard=True, resize_keyboard=True)
+                await update.message.reply_text(massage, reply_markup=reply_markup, parse_mode='Markdown')
+
             return
 
         else:
@@ -202,10 +213,13 @@ async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     address = coord.city_name_by_coords(user_sessions[user_id]["data"]["location"]["latitude"],
                                         user_sessions[user_id]["data"]["location"]["longitude"])
 
+
     user_sessions[user_id]["data"]["city"] = address[0]
     user_sessions[user_id]["data"]["street"] = address[1]
     user_sessions[user_id]["data"]["house_number"] = address[2]
     session_data = user_sessions[user_id]["data"]
+
+    model_result_min, model_result_max = model.check_price(session_data)
 
     summary = (
         f"Thank you! Here is the collected information:\n"
@@ -215,12 +229,13 @@ async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         f"Rooms: {session_data['rooms']}\n"
         f"Square Meters: {session_data['square_meters']}\n"
         f"Floor: {session_data['floor']}\n"
+        f"💰 Price estimate: *{model_result_min}₪* – *{model_result_max}₪*\n"
     )
     # We should insert call our model to get result COMMENT
     replay_buttons = [["Start again 🔄", "Clarify Details 🔎", "Show Heatmap 🗺"]]
 
     reply_markup = ReplyKeyboardMarkup(replay_buttons, one_time_keyboard=False, resize_keyboard=True)
-    await update.message.reply_text(summary, reply_markup=reply_markup)
+    await update.message.reply_text(summary, reply_markup=reply_markup, parse_mode='Markdown')
 
 
 
@@ -231,7 +246,7 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 def main() -> None:
     """Run the bot."""
     # Replace 'YOUR_BOT_TOKEN' with your actual bot token
-    application = Application.builder().token(os.environ["BOT_TOKEN"]).build()
+    application = Application.builder().token(os.getenv("BOT_TOKEN")).build()
 
     # Add handlers
     application.add_handler(CommandHandler("start", start))
