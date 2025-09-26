@@ -1,0 +1,8 @@
+python-telegram-bot==20.7
+logging
+dotenv
+geopy
+pickle
+pandas
+numpy
+sklearn

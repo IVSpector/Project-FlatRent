@@ -1,12 +1,15 @@
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
-from telegram import Update
-import logging
-from telegram import ReplyKeyboardMarkup, ReplyKeyboardRemove, KeyboardButton
-import json
 import atexit
-import Check_lon_lat as coord
+import json
+import logging
 import os
+
 from dotenv import load_dotenv
+from telegram import ReplyKeyboardMarkup, KeyboardButton
+from telegram import Update
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+
+import Check_lon_lat as coord
+
 load_dotenv()
 import model_work as model
 
@@ -22,9 +25,11 @@ try:
 except:
     user_sessions = {}
 
+
 def save_sessions():
     with open('tg_user_sessions.json', mode='w', encoding='utf-8') as file:
         json.dump(user_sessions, file, indent=2, ensure_ascii=False)
+
 
 atexit.register(save_sessions)
 
@@ -37,6 +42,7 @@ PAGES = {
     "enter house": "Please enter the house number.",
     "request location": "Check apartment price in your current location or point any location."
 }
+
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle the /start command."""
@@ -64,6 +70,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     reply_markup = ReplyKeyboardMarkup(REPLY_BUTTONS, one_time_keyboard=False, resize_keyboard=True)
     await update.message.reply_text(PAGES["request location"], reply_markup=reply_markup)
 
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle text messages based on the current page."""
     user_id = update.effective_user.id
@@ -78,7 +85,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         user_sessions[user_id]["current_page"] = "request location"
         user_sessions[user_id]["current_input"] = None
         text = "Start again 🔄"
-
 
     # Check if user has a session
     if user_id not in user_sessions:
@@ -122,7 +128,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             else:
                 massage = "Please try again."
                 user_sessions[user_id]["current_page"] = "request location"
-
 
                 replay_buttons = [["Clarify Details 🔎"]]
 
@@ -192,6 +197,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     except ValueError:
         await update.message.reply_text("Invalid input. Please enter a valid number.")
 
+
 async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle location messages."""
     user_id = update.effective_user.id
@@ -212,7 +218,6 @@ async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     address = coord.city_name_by_coords(user_sessions[user_id]["data"]["location"]["latitude"],
                                         user_sessions[user_id]["data"]["location"]["longitude"])
-
 
     user_sessions[user_id]["data"]["city"] = address[0]
     user_sessions[user_id]["data"]["street"] = address[1]
@@ -238,10 +243,10 @@ async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     await update.message.reply_text(summary, reply_markup=reply_markup, parse_mode='Markdown')
 
 
-
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Log errors caused by updates."""
     logger.error(f"Update {update} caused error {context.error}")
+
 
 def main() -> None:
     """Run the bot."""
@@ -254,6 +259,7 @@ def main() -> None:
     application.add_handler(MessageHandler(filters.LOCATION, handle_location))
     application.add_error_handler(error_handler)
     application.run_polling()
+
 
 if __name__ == '__main__':
     main()
