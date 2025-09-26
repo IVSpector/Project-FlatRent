@@ -4,4 +4,4 @@ dotenv
 geopy
 pandas
 numpy
-sklearn
+scikit-learn
